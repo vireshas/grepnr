@@ -62,13 +62,17 @@ func walkFiles(done <-chan struct{}, prefix string, concurreny int64) (<-chan st
 }
 
 func search(done <-chan struct{}, regex *regexp.Regexp, files <-chan string, c chan<- string) {
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String("us-east-1"),
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	svc := s3.New(sess)
+
 	for file := range files {
-		sess, err := session.NewSession(&aws.Config{
-			Region: aws.String("us-east-1"),
-		})
-
-		svc := s3.New(sess)
-
 		input := &s3.GetObjectInput{
 			Bucket: aws.String("amagi-s3logs"),
 			Key:    aws.String(file),
