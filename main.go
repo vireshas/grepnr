@@ -160,7 +160,7 @@ func pgrep(prefix string, regex string, outputFile string, concurreny int64) err
 func main() {
 	start := time.Now()
     	var err error = nil
-    	if len(os.Args) < 4 { 
+    	if len(os.Args) < 5 { 
 		err = pgrep(os.Args[1], os.Args[2], os.Args[3], int64(20))
 	} else {
 		cun, _ := strconv.ParseInt(os.Args[4], 10, 64)
