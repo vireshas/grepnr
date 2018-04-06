@@ -15,7 +15,7 @@ import (
 	"strconv"
 )
 
-func walkFiles(done <-chan struct{}, prefix string, concurreny int64) (<-chan string, <-chan error) {
+func walkFiles(done <-chan struct{}, bucket string, prefix string, concurreny int64) (<-chan string, <-chan error) {
 	files := make(chan string)
 	errc := make(chan error, 1)
 
@@ -30,7 +30,7 @@ func walkFiles(done <-chan struct{}, prefix string, concurreny int64) (<-chan st
 	s3svc := s3.New(sess)
 
 	inputparams := &s3.ListObjectsInput{
-		Bucket:  aws.String("amagi-s3logs"),
+		Bucket:  aws.String(bucket),
 		MaxKeys: aws.Int64(concurreny),
 		Prefix:  aws.String(prefix),
 	}
@@ -61,7 +61,7 @@ func walkFiles(done <-chan struct{}, prefix string, concurreny int64) (<-chan st
 	return files, errc
 }
 
-func search(done <-chan struct{}, regex *regexp.Regexp, files <-chan string, c chan<- string) {
+func search(done <-chan struct{}, bucket string, regex *regexp.Regexp, files <-chan string, c chan<- string) {
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String("us-east-1"),
 	})
@@ -74,7 +74,7 @@ func search(done <-chan struct{}, regex *regexp.Regexp, files <-chan string, c c
 
 	for file := range files {
 		input := &s3.GetObjectInput{
-			Bucket: aws.String("amagi-s3logs"),
+			Bucket: aws.String(bucket),
 			Key:    aws.String(file),
 		}
 
@@ -112,11 +112,11 @@ func search(done <-chan struct{}, regex *regexp.Regexp, files <-chan string, c c
 	}
 }
 
-func pgrep(prefix string, regex string, outputFile string, concurreny int64) error {
+func pgrep(bucket string, prefix string, regex string, outputFile string, concurreny int64) error {
 	done := make(chan struct{})
 	defer close(done)
 
-	files, errc := walkFiles(done, prefix, concurreny)
+	files, errc := walkFiles(done, bucket, prefix, concurreny)
 
 	rgx, err := regexp.Compile(regex)
 	if err != nil {
@@ -130,7 +130,7 @@ func pgrep(prefix string, regex string, outputFile string, concurreny int64) err
 
 	for i := 0; i < numSearchs; i++ {
 		go func() {
-			search(done, rgx, files, c)
+			search(done, bucket, rgx, files, c)
 			wg.Done()
 		}()
 	}
@@ -158,17 +158,18 @@ func pgrep(prefix string, regex string, outputFile string, concurreny int64) err
 	return nil
 }
 
-//grepnr PREFIX REGEX OUTPUTFILE CONCURRENCY
-//go run main.go "b4u" "BC5090529F49793F" output 40
-//go run main.go "combatgo/2018-03-24" "DE48B79718DA34F6" output1 40
+//grepnr BUCKET PREFIX REGEX OUTPUTFILE CONCURRENCY
+//go run main.go "bucket" "b4u" "BC5090529F49793F" output 40
+//go run main.go "bucket" "combatgo/2018-03-24" "DE48B79718DA34F6" output1 40
 func main() {
 	start := time.Now()
     	var err error = nil
-    	if len(os.Args) < 5 { 
-		err = pgrep(os.Args[1], os.Args[2], os.Args[3], int64(20))
+
+    	if len(os.Args) < 6 { 
+		err = pgrep(os.Args[1], os.Args[2], os.Args[3], os.Args[4], int64(20))
 	} else {
-		cun, _ := strconv.ParseInt(os.Args[4], 10, 64)
-		err = pgrep(os.Args[1], os.Args[2], os.Args[3], cun)
+		cun, _ := strconv.ParseInt(os.Args[5], 10, 64)
+		err = pgrep(os.Args[1], os.Args[2], os.Args[3], os.Args[4], cun)
 	}
 	
 	if err != nil {
