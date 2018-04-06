@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"time"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -11,9 +12,10 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"strconv"
 )
 
-func walkFiles(done <-chan struct{}, prefix string) (<-chan string, <-chan error) {
+func walkFiles(done <-chan struct{}, prefix string, concurreny int64) (<-chan string, <-chan error) {
 	files := make(chan string)
 	errc := make(chan error, 1)
 
@@ -29,7 +31,7 @@ func walkFiles(done <-chan struct{}, prefix string) (<-chan string, <-chan error
 
 	inputparams := &s3.ListObjectsInput{
 		Bucket:  aws.String("amagi-s3logs"),
-		MaxKeys: aws.Int64(20),
+		MaxKeys: aws.Int64(concurreny),
 		Prefix:  aws.String(prefix),
 	}
 
@@ -106,11 +108,11 @@ func search(done <-chan struct{}, regex *regexp.Regexp, files <-chan string, c c
 	}
 }
 
-func pgrep(prefix string, regex string, outputFile string) error {
+func pgrep(prefix string, regex string, outputFile string, concurreny int64) error {
 	done := make(chan struct{})
 	defer close(done)
 
-	files, errc := walkFiles(done, prefix)
+	files, errc := walkFiles(done, prefix, concurreny)
 
 	rgx, err := regexp.Compile(regex)
 	if err != nil {
@@ -119,7 +121,7 @@ func pgrep(prefix string, regex string, outputFile string) error {
 
 	c := make(chan string)
 	var wg sync.WaitGroup
-	const numSearchs = 20
+	var numSearchs = int(concurreny)
 	wg.Add(numSearchs)
 
 	for i := 0; i < numSearchs; i++ {
@@ -152,11 +154,22 @@ func pgrep(prefix string, regex string, outputFile string) error {
 	return nil
 }
 
-//go run main.go "b4u" "BC5090529F49793F" output
-//go run main.go "combatgo/2018-03-24" "DE48B79718DA34F6" output1
+//grepnr PREFIX REGEX OUTPUTFILE CONCURRENCY
+//go run main.go "b4u" "BC5090529F49793F" output 40
+//go run main.go "combatgo/2018-03-24" "DE48B79718DA34F6" output1 40
 func main() {
-	err := pgrep(os.Args[1], os.Args[2], os.Args[3])
+	start := time.Now()
+    	var err error = nil
+    	if len(os.Args) < 4 { 
+		err = pgrep(os.Args[1], os.Args[2], os.Args[3], int64(20))
+	} else {
+		cun, _ := strconv.ParseInt(os.Args[4], 10, 64)
+		err = pgrep(os.Args[1], os.Args[2], os.Args[3], cun)
+	}
+	
 	if err != nil {
 		fmt.Println("Failed with error ", err)
 	}
+	
+	fmt.Println("completed in ", time.Since(start))
 }
